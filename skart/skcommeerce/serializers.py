@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Book, Product,  SkartUser
+from .models import Book, Cart, Product,  SkartUser, PlaceOrder
 
 
 
@@ -25,12 +25,11 @@ class UserSerializer(serializers.ModelSerializer):
 
 class CreateSkartUserSerializer(serializers.ModelSerializer):
     user = UserSerializer()
-    # new_password = serializers.CharField()
-    # confirm_password = serializers.CharField()
+   
     class Meta:
         model = SkartUser
         fields = ['user', 'mobile_number', 'date_of_birth', 'created_on', 'updated_on']
-        # write_only_fields = ['new_password', 'confirm_password']
+        
 
     def create(self, validated_data):
         user = validated_data.pop('user')
@@ -38,6 +37,38 @@ class CreateSkartUserSerializer(serializers.ModelSerializer):
         return SkartUser.objects.create(user = user_instance, **validated_data)
 
 
+
 class UpdateSkartUserSerializer(serializers.ModelSerializer):
     class Meta:
+        model = SkartUser
         fields = ['user', 'mobile_number', 'date_of_birth', 'created_on', 'updated_on']
+
+class CartSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cart
+        fields = ['user', 'products', 'books', 'total_price', 'updated_on']
+        # read_only_fields = ['total_price']
+
+    def save(self):
+        if self.validated_data.get('products') is not None:
+            x=0
+            for product in self.validated_data['products']:
+                x = x + product.price
+        else:
+            x = 0
+        
+        if self.validated_data.get('books') is not None:
+            y=0
+            for book in self.validated_data['books']:
+                y = y + book.price
+        else:
+            y = 0
+        self.validated_data['total_price'] = x+y
+        return super().save()
+
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaceOrder
+        fields = ['customer', 'products', 'books', 'total_price', 'ordered_at']
+    

@@ -62,8 +62,8 @@ class Book(models.Model):
     category = models.CharField(max_length=200, choices=Book_Category_Choices)
     isbn = models.CharField(max_length=20)
     pages = models.IntegerField()
-    price = models.IntegerField()
-    stock = models.IntegerField()
+    price = models.IntegerField(validators=[MinValueValidator(0)])
+    stock = models.IntegerField(validators=[MinValueValidator(0)])
     description = models.TextField(blank= True)
     additional_information = models.TextField(blank= True)
     image = models.ImageField(upload_to='uploads', null = True, blank = True)
@@ -79,8 +79,8 @@ class Product(models.Model):
     product_tag = models.CharField(max_length=10)
     name = models.CharField(max_length=200)
     category = models.CharField(max_length=255, choices= Product_Catageory_Choices)
-    price = models.IntegerField()
-    stock = models.IntegerField()
+    price = models.IntegerField(validators=[MinValueValidator(0)])
+    stock = models.IntegerField(validators=[MinValueValidator(0)])
     description = models.TextField(blank = True)
     additional_information = models.TextField(blank= True)
     image = models.ImageField(upload_to='uploads', null = True, blank = True)
@@ -93,8 +93,24 @@ class Product(models.Model):
         return f'{self.product_tag} {self.name}'
 
 class SkartUser(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, max_length=255)
+    user = models.OneToOneField(User, on_delete=models.CASCADE)
     date_of_birth = models.DateField(null=False, blank=False)
     mobile_number = models.IntegerField(validators=[MaxValueValidator(9999999999), MinValueValidator(1000000000)], unique = True, blank=False)
     created_on = models.DateTimeField(auto_now_add=True)
-    updated_on = models.DateTimeField(auto_now_add=True)
+    updated_on = models.DateTimeField(auto_now=True)
+
+class Cart(models.Model):
+    user = models.OneToOneField(SkartUser, on_delete=models.CASCADE, related_name='customer')
+    products = models.ManyToManyField(Product, blank=True)
+    books = models.ManyToManyField(Book, blank= True)
+    total_price = models.IntegerField(default=0)
+    updated_on = models.DateTimeField(auto_now=True)
+
+class PlaceOrder(models.Model):
+    customer = models.ForeignKey(SkartUser, on_delete=models.CASCADE, related_name='customer_order')
+    products = models.ManyToManyField(Product, blank=True)
+    books = models.ManyToManyField(Book, blank= True)
+    total_price = models.IntegerField(default=0)
+    ordered_at = models.DateTimeField(auto_now_add= True)
+    
+
