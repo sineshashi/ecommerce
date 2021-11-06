@@ -57,6 +57,14 @@ Book_Category_Choices = [
     ('Other Books', 'Other Books'),
 ]
 
+Order_status_choices = [
+    ('Initialized', 'initialized'),
+    ('Dispatched', 'Dispatched'),
+    ('On Route', 'On Route'),
+    ('Out for delivery', 'Out for delivery'),
+    ('Delivered', 'Delivered'),
+]
+
 class Book(models.Model):
     title = models.CharField(max_length=255)
     category = models.CharField(max_length=200, choices=Book_Category_Choices)
@@ -107,10 +115,20 @@ class Cart(models.Model):
     updated_on = models.DateTimeField(auto_now=True)
 
 class PlaceOrder(models.Model):
+    order_status = models.CharField(max_length=255, choices=Order_status_choices)
     customer = models.ForeignKey(SkartUser, on_delete=models.CASCADE, related_name='customer_order')
     products = models.ManyToManyField(Product, blank=True)
     books = models.ManyToManyField(Book, blank= True)
     total_price = models.IntegerField(default=0)
+    receiver_name = models.CharField(max_length=255)
+    receiver_mobile_number = models.IntegerField(validators=[MaxValueValidator(9999999999), MinValueValidator(1000000000)], blank=False)
+    place = models.CharField(max_length=400)
+    district = models.CharField(max_length=255)
+    state = models.CharField(max_length=255)
+    country = models.CharField(max_length=255)
     ordered_at = models.DateTimeField(auto_now_add= True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
     
 

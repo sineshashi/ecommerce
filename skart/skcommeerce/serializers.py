@@ -70,5 +70,14 @@ class CartSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceOrder
-        fields = ['customer', 'products', 'books', 'total_price', 'ordered_at']
-    
+        fields = ['customer', 'products', 'books', 'total_price','receiver_name','receiver_name','receiver_mobile_number', 'place', 'district', 'state', 'country', 'ordered_at', 'updated_at']
+
+class OrderedSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaceOrder
+        fields = ['customer','order_status', 'products', 'books', 'total_price','receiver_name','receiver_name','receiver_mobile_number', 'place', 'district', 'state', 'country', 'ordered_at', 'updated_at']
+
+
+
+
+  

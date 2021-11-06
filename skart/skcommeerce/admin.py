@@ -18,7 +18,7 @@ class SkartUserAdmin(admin.ModelAdmin):
 
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
-    list_display = ['user', 'total_price', 'cart_products', 'cart_books', 'updated_on']
+    list_display = ['id', 'user', 'total_price', 'cart_products', 'cart_books', 'updated_on']
     def cart_products(self, instance):
         return [product for product in instance.products.all()]
     def cart_books(self, instance):
@@ -26,7 +26,7 @@ class CartAdmin(admin.ModelAdmin):
 
 @admin.register(PlaceOrder)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ['customer', 'total_price','ordered_products', 'ordered_books',  'ordered_at']
+    list_display = ['id', 'order_status', 'customer', 'total_price','ordered_products', 'ordered_books','receiver_name','receiver_mobile_number', 'place', 'district', 'state', 'country' , 'ordered_at', 'updated_at']
     def ordered_products(self, instance):
         return [product for product in instance.products.all()]
     def ordered_books(self, instance):

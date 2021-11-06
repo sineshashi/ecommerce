@@ -1,10 +1,13 @@
+
 from django.db.models.query import QuerySet
 from django.shortcuts import render
 from django.shortcuts import render
 from rest_framework import generics, status
 import rest_framework
 from rest_framework.request import Request
-from .serializers import  BookSerializer, ProducSerializer, CreateSkartUserSerializer, UpdateSkartUserSerializer, CartSerializer, OrderSerializer
+from .serializers import  (BookSerializer, ProducSerializer, CreateSkartUserSerializer, 
+UpdateSkartUserSerializer, CartSerializer, OrderSerializer, OrderedSerializer,
+)
 from .models import  Book, Product, SkartUser, Cart, PlaceOrder
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAcceptable, ValidationError
@@ -209,12 +212,101 @@ class PlaceOrderView(generics.CreateAPIView):
         cart_data = Cart.objects.get(user_id = skart_user.id)
         request.data['customer'] = skart_user.id
         cart_products = cart_data.products.all()
-        request.data['products'] = list(cart_products.values_list('pk', flat = True))
-
         cart_books = cart_data.books.all()
-        request.data['books'] = list(cart_books.values_list('pk', flat = True))
-        request.data['total_price'] = cart_data.total_price
+        none_list = []
+        if (list(cart_products.values_list('pk', flat = True)) == none_list) and (list(cart_books.values_list('pk', flat = True)) == none_list):
+            raise NotAcceptable(detail="Please add at least one item to cart.")
+        else:
+            request.data['products'] = list(cart_products.values_list('pk', flat = True))
+            request.data['books'] = list(cart_books.values_list('pk', flat = True))
+            none_list =[]
+            request.data['total_price'] = cart_data.total_price
+            cart_data.products.set(none_list)
+            cart_data.books.set(none_list)
+            Cart.objects.filter(user_id = skart_user.id).update(total_price = 0)
+        
+        
         return super().create(request, *args, **kwargs)
     queryset = PlaceOrder.objects.all()
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
+
+
+    
+class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
+    def update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        userid = self.request.user.id
+        skartuser = SkartUser.objects.get(user_id = userid)
+        pk = kwargs.get('pk')
+        orderdatalist = list(PlaceOrder.objects.filter(customer_id = skartuser.id))
+        try:
+            for order in orderdatalist:
+                pk == order.id
+        except:
+            raise NotAcceptable(detail="You are not authorized for this action.")
+        request.data['customer']= skartuser.id
+        orderdata = PlaceOrder.objects.get(id = pk)
+        ordered_products = orderdata.products.all()
+        ordered_products_set = set(ordered_products.values_list('pk', flat=True))
+        cancelling_products = request.data.get('products')
+        if cancelling_products is not None:
+            if ordered_products is None:
+                request.data['products'] = None
+            else:
+                remaining_products_set = ordered_products_set.difference(set(cancelling_products))
+                request.data['products'] = remaining_products_set
+        else:
+            if ordered_products is not None:
+                request.data.update({'products': list(ordered_products_set)})
+            else:
+                request.data['products'] = None
+        ordered_books = orderdata.books.all()
+        ordered_books_set = set(ordered_books.values_list('pk', flat=True))
+        cancelling_books = request.data.get('books')
+        if cancelling_books is not None:
+            if ordered_books is None:
+                request.data['books'] = None
+            else:
+                remaining_books_set = ordered_books_set.difference(set(cancelling_books))
+                request.data['books'] = remaining_books_set
+        else:
+            if ordered_books is not None:
+                request.data.update({'books': list(ordered_books_set)})
+            else:
+                request.data['books'] = None
+        
+        
+        if request.data.get('products') is not None:
+            remaining_productsid_list = list(request.data['products'])
+            products_price = 0
+            for productid in remaining_productsid_list:
+                product = Product.objects.get(id = productid)
+                products_price = products_price + product.price
+        if request.data.get('books') is not None:
+            remaining_booksid_list = list(request.data['books'])
+            books_price = 0
+            for bookid in remaining_booksid_list:
+                book = Book.objects.get(id = bookid)
+                books_price = books_price + book.price
+        newtotalprice = products_price+books_price
+        request.data.update({'total_price':newtotalprice})
+        return super().update(request, *args, **kwargs)
+    
+
+    def retrieve(self, request, *args, **kwargs):
+        userid = self.request.user.id
+        skartuser = SkartUser.objects.get(user_id = userid)
+        pk = kwargs.get('pk')
+        orderdatalist = list(PlaceOrder.objects.filter(customer_id = skartuser.id))
+        try:
+            for order in orderdatalist:
+                pk == order.id
+        except:
+            raise NotAcceptable(detail="You are not authorized for this action.")
+        return super().retrieve(request, *args, **kwargs)
+    queryset = PlaceOrder.objects.all()
+    serializer_class = OrderedSerializer
+    permission_classes = [IsAuthenticated]
+
+
