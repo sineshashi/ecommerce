@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import  Book, Product, SkartUser, Cart, PlaceOrder
+from .models import  Book, Product, SkartUser, Cart, PlaceOrder, CancelledOrder
 from django.contrib.auth.models import User
 # Register your models here.
 
@@ -30,4 +30,12 @@ class OrderAdmin(admin.ModelAdmin):
     def ordered_products(self, instance):
         return [product for product in instance.products.all()]
     def ordered_books(self, instance):
+        return [product for product in instance.books.all()]
+
+@admin.register(CancelledOrder)
+class CancelledOrdersAdmin(admin.ModelAdmin):
+    list_display= ['id', 'customer', 'cancelled_products', 'cancelled_books', 'cancelled_at']
+    def cancelled_products(self, instance):
+        return [product for product in instance.products.all()]
+    def cancelled_books(self, instance):
         return [product for product in instance.books.all()]

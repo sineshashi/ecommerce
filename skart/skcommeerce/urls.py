@@ -14,7 +14,8 @@ urlpatterns = [
     path('myprofile/cart', views.CartView.as_view(), name= 'Cart'),
     path('myprofile/cart/<int:pk>', views.CartUpdateView.as_view(), name = 'my_cart'),
     path('myprofile/cart/r/<int:pk>', views.RemoveItemsCartView.as_view(), name = 'remove_itmes_from_cart'),
-    path('myprofile/placeorder', views.PlaceOrderView.as_view(), name = 'place_order'),
+    path('myprofile/order', views.PlaceOrderView.as_view(), name = 'place_order'),
     path('myprofile/order/<int:pk>', views.ItemsCancelOrderView.as_view(), name = 'Items_cancel_order'),
-
+    path('myprofile/cancelorder', views.CancellOrderView.as_view(), name = 'Cancel Order'),
+    path('myprofile/cancelorder/<int:pk>', views.RetrieveCancelledOrderView.as_view(), name= 'cancelled_order')
 ]

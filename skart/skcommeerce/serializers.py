@@ -1,6 +1,6 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from .models import Book, Cart, Product,  SkartUser, PlaceOrder
+from .models import Book, Cart, Product,  SkartUser, PlaceOrder, CancelledOrder
 
 
 
@@ -77,7 +77,9 @@ class OrderedSerializer(serializers.ModelSerializer):
         model = PlaceOrder
         fields = ['customer','order_status', 'products', 'books', 'total_price','receiver_name','receiver_name','receiver_mobile_number', 'place', 'district', 'state', 'country', 'ordered_at', 'updated_at']
 
-
-
+class CancelledOrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CancelledOrder
+        fields = ['customer', 'products', 'books', 'cancelled_at']
 
   

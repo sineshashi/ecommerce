@@ -106,6 +106,7 @@ class SkartUser(models.Model):
     mobile_number = models.IntegerField(validators=[MaxValueValidator(9999999999), MinValueValidator(1000000000)], unique = True, blank=False)
     created_on = models.DateTimeField(auto_now_add=True)
     updated_on = models.DateTimeField(auto_now=True)
+    
 
 class Cart(models.Model):
     user = models.OneToOneField(SkartUser, on_delete=models.CASCADE, related_name='customer')
@@ -129,6 +130,9 @@ class PlaceOrder(models.Model):
     ordered_at = models.DateTimeField(auto_now_add= True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
+class CancelledOrder(models.Model):
+    customer = models.ForeignKey(SkartUser, on_delete=models.CASCADE, related_name='cancelled_customer')
+    products = models.ManyToManyField(Product, blank=True)
+    books = models.ManyToManyField(Book, blank= True)
+    cancelled_at = models.DateTimeField(auto_now_add=True)
     
-

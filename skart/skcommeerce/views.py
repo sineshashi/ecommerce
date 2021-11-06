@@ -4,15 +4,20 @@ from django.shortcuts import render
 from django.shortcuts import render
 from rest_framework import generics, status
 import rest_framework
+from rest_framework import request
 from rest_framework.request import Request
-from .serializers import  (BookSerializer, ProducSerializer, CreateSkartUserSerializer, 
-UpdateSkartUserSerializer, CartSerializer, OrderSerializer, OrderedSerializer,
+from .serializers import  (
+    BookSerializer, ProducSerializer, CreateSkartUserSerializer, 
+UpdateSkartUserSerializer, CartSerializer, OrderSerializer, OrderedSerializer, CancelledOrderSerializer
+
 )
-from .models import  Book, Product, SkartUser, Cart, PlaceOrder
+from .models import  (
+    Book, CancelledOrder, Product, SkartUser, Cart, PlaceOrder
+)
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAcceptable, ValidationError
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
-from django.contrib.auth.hashers import make_password
+
 
 
 # Create your views here.
@@ -38,6 +43,10 @@ class CreateSkartUser(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         if request.data is None:
             return NotAcceptable(detail="No data Provided")
+        if request.data['user']['password1'] is None:
+            return NotAcceptable(detail="Password1 is required.")
+        if request.data['user']['password2'] is None:
+            return NotAcceptable(detail="Password2 is required.")
         password1 = request.data['user']['password1']
         password2 = request.data['user']['password2']
         if password1 != password2:
@@ -210,20 +219,19 @@ class PlaceOrderView(generics.CreateAPIView):
         userid = self.request.user.id
         skart_user = SkartUser.objects.get(user_id = userid)
         cart_data = Cart.objects.get(user_id = skart_user.id)
-        request.data['customer'] = skart_user.id
         cart_products = cart_data.products.all()
         cart_books = cart_data.books.all()
-        none_list = []
-        if (list(cart_products.values_list('pk', flat = True)) == none_list) and (list(cart_books.values_list('pk', flat = True)) == none_list):
-            raise NotAcceptable(detail="Please add at least one item to cart.")
-        else:
-            request.data['products'] = list(cart_products.values_list('pk', flat = True))
-            request.data['books'] = list(cart_books.values_list('pk', flat = True))
-            none_list =[]
-            request.data['total_price'] = cart_data.total_price
-            cart_data.products.set(none_list)
-            cart_data.books.set(none_list)
-            Cart.objects.filter(user_id = skart_user.id).update(total_price = 0)
+        if (len(list(cart_products.values_list('pk', flat = True))) == 0) and (len(list(cart_books.values_list('pk', flat = True))) == 0):
+            return Response("Please add at least one item in cart.", status=status.HTTP_406_NOT_ACCEPTABLE)
+        request.data['customer'] = skart_user.id
+        request.data['products'] = list(cart_products.values_list('pk', flat = True))
+        request.data['books'] = list(cart_books.values_list('pk', flat = True))
+        none_list =[]
+        request.data['total_price'] = cart_data.total_price
+
+        cart_data.products.set(none_list)
+        cart_data.books.set(none_list)
+        Cart.objects.filter(user_id = skart_user.id).update(total_price = 0)
         
         
         return super().create(request, *args, **kwargs)
@@ -245,14 +253,35 @@ class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
                 pk == order.id
         except:
             raise NotAcceptable(detail="You are not authorized for this action.")
-        request.data['customer']= skartuser.id
+        
         orderdata = PlaceOrder.objects.get(id = pk)
         ordered_products = orderdata.products.all()
         ordered_products_set = set(ordered_products.values_list('pk', flat=True))
+
+        ordered_books = orderdata.books.all()
+        ordered_books_set = set(ordered_books.values_list('pk', flat=True))
+
+        
+        if request.data.get('products') is not None:
+            common_products_list = list(ordered_products_set.intersection(set(request.data.get('products'))))
+        else:
+            common_products_list =  []  
+        if request.data.get('books') is not None:
+            common_books_list = list(ordered_books_set.intersection(set(request.data.get('books'))))
+        else:
+            common_books_list = []   
+        if (len(common_books_list) != 0) or (len(common_products_list) != 0):
+            cancelled_order = CancelledOrder.objects.create(customer = skartuser)
+            if common_products_list is not None:
+                cancelled_order.products.set(common_products_list)
+            if common_books_list is not None:
+                cancelled_order.books.set(common_books_list)
+        
+        request.data['customer']= skartuser.id
         cancelling_products = request.data.get('products')
         if cancelling_products is not None:
             if ordered_products is None:
-                request.data['products'] = None
+                request.data['products'] = []
             else:
                 remaining_products_set = ordered_products_set.difference(set(cancelling_products))
                 request.data['products'] = remaining_products_set
@@ -260,13 +289,12 @@ class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
             if ordered_products is not None:
                 request.data.update({'products': list(ordered_products_set)})
             else:
-                request.data['products'] = None
-        ordered_books = orderdata.books.all()
-        ordered_books_set = set(ordered_books.values_list('pk', flat=True))
+                request.data['products'] = []
+
         cancelling_books = request.data.get('books')
         if cancelling_books is not None:
             if ordered_books is None:
-                request.data['books'] = None
+                request.data['books'] = []
             else:
                 remaining_books_set = ordered_books_set.difference(set(cancelling_books))
                 request.data['books'] = remaining_books_set
@@ -274,16 +302,17 @@ class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
             if ordered_books is not None:
                 request.data.update({'books': list(ordered_books_set)})
             else:
-                request.data['books'] = None
-        
-        
-        if request.data.get('products') is not None:
+                request.data['books'] = []
+        if (len(request.data.get('products')) == 0) and (len(request.data.get('books')) == 0):
+            PlaceOrder.objects.filter(id=pk).delete()
+            return Response("Your order has been cancelled", status= status.HTTP_200_OK)
+        if len(request.data.get('products')) != 0:
             remaining_productsid_list = list(request.data['products'])
             products_price = 0
             for productid in remaining_productsid_list:
                 product = Product.objects.get(id = productid)
                 products_price = products_price + product.price
-        if request.data.get('books') is not None:
+        if len(request.data.get('books')) != 0:
             remaining_booksid_list = list(request.data['books'])
             books_price = 0
             for bookid in remaining_booksid_list:
@@ -298,15 +327,51 @@ class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
         userid = self.request.user.id
         skartuser = SkartUser.objects.get(user_id = userid)
         pk = kwargs.get('pk')
-        orderdatalist = list(PlaceOrder.objects.filter(customer_id = skartuser.id))
-        try:
-            for order in orderdatalist:
-                pk == order.id
-        except:
+        orderdata = PlaceOrder.objects.get(id = pk)
+        userid = orderdata.customer_id
+        if userid != skartuser.id:
             raise NotAcceptable(detail="You are not authorized for this action.")
         return super().retrieve(request, *args, **kwargs)
     queryset = PlaceOrder.objects.all()
     serializer_class = OrderedSerializer
     permission_classes = [IsAuthenticated]
 
+class CancellOrderView(generics.CreateAPIView):
+    def create(self, request, *args, **kwargs):
+        
+        if request.data['orderid'] is None:
+            raise NotAcceptable(detail="Orderid is required.")
+        order_id = request.data['orderid']
+        order_details = PlaceOrder.objects.get(id = order_id)
+        custumorid = order_details.customer_id
+        
+        skartuser = SkartUser.objects.get(user_id = self.request.user.id)
+        
+        if custumorid != skartuser.id:
+            raise NotAcceptable(detail= "You are not authorized to perform this action.")
+        ordered_products = order_details.products.all()
+        ordered_books = order_details.books.all()
+        
+        request.data['products'] = list(ordered_products.values_list('pk', flat= True))
+        request.data['books'] = list(ordered_books.values_list('pk', flat= True))
+        request.data['customer']= skartuser.id
+        PlaceOrder.objects.filter(id = order_id).delete()
+        return super().create(request, *args, **kwargs)
+    queryset = CancelledOrder.objects.all()
+    serializer_class = CancelledOrderSerializer
+    permission_classes = [IsAuthenticated]
 
+
+class RetrieveCancelledOrderView(generics.RetrieveAPIView):
+    def retrieve(self, request, *args, **kwargs):
+        pk = kwargs.get('pk')
+        cancelled_orders_list = CancelledOrder.objects.get(id = pk)
+        customerid = cancelled_orders_list.customer_id
+        skartuser = SkartUser.objects.get(user_id = self.request.user.id)
+        if customerid != skartuser.id:
+            raise NotAcceptable(detail= "You are not authorized for this action.")
+        
+        return super().retrieve(request, *args, **kwargs)
+    queryset = CancelledOrder.objects.all()
+    serializer_class = CancelledOrderSerializer
+    permission_classes= [IsAuthenticated]
