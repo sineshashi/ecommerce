@@ -1,18 +1,18 @@
 
-from django.db.models.query import QuerySet
-from django.shortcuts import render
+from django.contrib.auth.hashers import make_password
+from django.contrib.auth.models import User
 from django.shortcuts import render
 from rest_framework import generics, status
 import rest_framework
 from rest_framework import request
 from rest_framework.request import Request
-from .serializers import  (
-    BookSerializer, ProducSerializer, CreateSkartUserSerializer, 
-UpdateSkartUserSerializer, CartSerializer, OrderSerializer, OrderedSerializer, CancelledOrderSerializer
-
+from .serializers import (
+    ProducSerializer, CreateCustomerSerializer, 
+UpdateCustomerSerializer, CartSerializer, OrderSerializer, CancelledOrderSerializer,
+CreateSellerSerializer, UpdateSellerSerializer, RetrieveSellerSerializer, ProductCategorySerializer, ProductOrderSerializer, UserSerializer
 )
 from .models import  (
-    Book, CancelledOrder, Product, SkartUser, Cart, PlaceOrder
+    CancelledOrder, Customer, Product, Cart, PlaceOrder, Seller, ProductOrder, ProductCategory
 )
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAcceptable, ValidationError
@@ -23,14 +23,6 @@ from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnl
 # Create your views here.
 
 
-class ListBook(generics.ListAPIView):
-    queryset =Book.objects.all()
-    serializer_class = BookSerializer
-
-class DetailBook(generics.RetrieveAPIView):
-    queryset =Book.objects.all()
-    serializer_class = BookSerializer
-
 class ListProduct(generics.ListAPIView):
     queryset = Product.objects.all()
     serializer_class = ProducSerializer
@@ -39,7 +31,16 @@ class DetailProduct(generics.RetrieveAPIView):
     queryset = Product.objects.all()
     serializer_class = ProducSerializer
 
-class CreateSkartUser(generics.CreateAPIView):
+class CreateCustomerView(generics.CreateAPIView):
+    #request:
+    '''
+    {
+        user:{first_name:  , last_name:   , email:  , username:  ,password1:  ,password2:  },
+        mobile_number:  ,
+        date_of_birth:  
+    }
+    This function create a customer with provided username and password and a cart related to the user with no products.
+    '''
     def create(self, request, *args, **kwargs):
         if request.data is None:
             return NotAcceptable(detail="No data Provided")
@@ -50,35 +51,49 @@ class CreateSkartUser(generics.CreateAPIView):
         password1 = request.data['user']['password1']
         password2 = request.data['user']['password2']
         if password1 != password2:
-            raise NotAcceptable(detail="Passwords did not mat['user']['password']ch.")
+            raise NotAcceptable(detail="Passwords did not match.")
         if len(str(password1)) < 8:
             raise NotAcceptable(detail= "Password must contain at least 8 characters")
         if password1.isdigit():
             raise NotAcceptable(detail="password must contain alphabets.")
         else:
+            password1 = make_password(password1)
             request.data['user']['password'] = password1
             del password1
             del password2
-        return super().create(request, *args, **kwargs)
-    queryset = SkartUser.objects.all()
-    serializer_class = CreateSkartUserSerializer
+            
+            customer_serializer = CreateCustomerSerializer(data=request.data)
+            customer_serializer.is_valid(raise_exception=True)
+            customer_serializer.save()
+            customer_instance = Customer.objects.get(mobile_number =request.data['mobile_number'])
+            cart_serializer = CartSerializer(data={'customer':customer_instance.id, "products":[]})
+            cart_serializer.is_valid(raise_exception=True)
+            cart_serializer.save()
 
-class SkartUserProfile(generics.RetrieveUpdateDestroyAPIView):
+        return Response(f"Thank you very much for becoming our customer. Your details are:\n {customer_serializer.data}", status= status.HTTP_201_CREATED)
+
+            
+            
+        
+    
+
+class CustomerProfile(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
         pk = kwargs.get('pk')
         if pk is None:
             raise NotAcceptable(detail="No data provided.")
-        pk_data = SkartUser.objects.get(id = pk)
-        user_data = SkartUser.objects.get(user_id = self.request.user.id)
+        pk_data = Customer.objects.get(id = pk)
+        user_data = Customer.objects.get(user_id = self.request.user.id)
         if pk_data != user_data:
             raise NotAcceptable(detail="You are not authorized for this data")
         return super().retrieve(request, *args, **kwargs)
     def update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
         pk = kwargs.get('pk')
         if pk is None:
             raise NotAcceptable(detail="No data provided.")
-        pk_data = SkartUser.objects.get(id = pk)
-        user_data = SkartUser.objects.get(user_id = self.request.user.id)
+        pk_data = Customer.objects.get(id = pk)
+        user_data = Customer.objects.get(user_id = self.request.user.id)
         if pk_data != user_data:
             raise NotAcceptable(detail="You are not authorized for this data")
         return super().update(request, *args, **kwargs)
@@ -86,127 +101,221 @@ class SkartUserProfile(generics.RetrieveUpdateDestroyAPIView):
         pk = kwargs.get('pk')
         if pk is None:
             raise NotAcceptable(detail="No data provided.")
-        pk_data = SkartUser.objects.get(id = pk)
-        user_data = SkartUser.objects.get(user_id = self.request.user.id)
+        pk_data = Customer.objects.get(id = pk)
+        user_data = Customer.objects.get(user_id = self.request.user.id)
         if pk_data != user_data:
             raise NotAcceptable(detail="You are not authorized for this data")
         return super().destroy(request, *args, **kwargs)
     def get_queryset(self):
-        return SkartUser.objects.all().select_related('user')
-    serializer_class = UpdateSkartUserSerializer
+        return Customer.objects.all().select_related('user')
+    serializer_class = UpdateCustomerSerializer
     permission_classes = [IsAuthenticated]
 
 
-class CartView(generics.CreateAPIView):
+class CreateSellerView(generics.CreateAPIView):
+    #request:
+    '''
+    {
+        seller:{email:  , username:  ,password1:  ,password2:  },
+        mobile_number:  ,
+        seller_name:    ,
+        store_address:   ,
+        selling_product_category:   
+    }
+    This function create a seller with provided username and password.
+    '''
     def create(self, request, *args, **kwargs):
-        id = self.request.user.id
-        user_data = SkartUser.objects.get(user_id = id)
-        request.data['user'] = user_data.id
+        if request.data is None:
+            return NotAcceptable(detail="No data Provided")
+        if request.data['seller']['password1'] is None:
+            return NotAcceptable(detail="Password1 is required.")
+        if request.data['seller']['password2'] is None:
+            return NotAcceptable(detail="Password2 is required.")
+        password1 = request.data['seller']['password1']
+        password2 = request.data['seller']['password2']
+        if password1 != password2:
+            raise NotAcceptable(detail="Passwords did not match.")
+        if len(str(password1)) < 8:
+            raise NotAcceptable(detail= "Password must contain at least 8 characters")
+        if password1.isdigit():
+            raise NotAcceptable(detail="password must contain alphabets.")
+        else:
+            password1 = make_password(password1)
+            request.data['seller']['password'] = password1
+            del password1
+            del password2
+            request_user_data = request.data['seller']
+            request_user_data.update({'is_staff':True})
         return super().create(request, *args, **kwargs)
-    queryset = Cart.objects.all()
-    serializer_class = CartSerializer
-    permission_classes = [IsAuthenticated]
+    queryset = Seller.objects.all()
+    serializer_class = CreateSellerSerializer
+    
+            
+        
+    
+
+class SellerProfile(generics.RetrieveDestroyAPIView):
+    def retrieve(self, request, *args, **kwargs):
+        pk = kwargs.get('pk')
+        if pk is None:
+            raise NotAcceptable(detail="No data provided.")
+        pk_data = Seller.objects.get(id = pk)
+        seller_data = Seller.objects.get(seller_id = self.request.user.id)
+        if pk_data != seller_data:
+            raise NotAcceptable(detail="You are not authorized for this data")
+        return super().retrieve(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        pk = kwargs.get('pk')
+        if pk is None:
+            raise NotAcceptable(detail="No data provided.")
+        pk_data = Seller.objects.get(id = pk)
+        seller_data = Seller.objects.get(seller_id = self.request.user.id)
+        if pk_data != seller_data:
+            raise NotAcceptable(detail="You are not authorized for this data")
+        return super().destroy(request, *args, **kwargs)
+    def get_queryset(self):
+        return Seller.objects.all().select_related('seller')
+    serializer_class = RetrieveSellerSerializer
+    permission_classes = [IsAdminUser]
+
+class UpdateSellerProfile(generics.UpdateAPIView):
+    def update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        pk = kwargs.get('pk')
+        if pk is None:
+            raise NotAcceptable(detail="No data provided.")
+        pk_data = Seller.objects.get(id = pk)
+        seller_data = Seller.objects.get(seller_id = self.request.user.id)
+        if pk_data != seller_data:
+            raise NotAcceptable(detail="You are not authorized for this action.")
+        return super().update(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return Seller.objects.all().select_related('seller')
+    serializer_class = UpdateSellerSerializer
+    permission_classes = [IsAdminUser]
+
+
 
 
 class CartUpdateView(generics.RetrieveUpdateAPIView):
+    '''
+    This view takes request as
+    {
+        'products':{
+            'product':    ,
+            'quantity':   ,
+        }
+    }
+    And adds the given product in customer's cart with given quantity and updates it if it already exists.
+    User can add one one by product to cart.
+    '''
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
         pk = kwargs.get('pk')
+        if kwargs['pk'] is None:
+            raise NotAcceptable(detail="Please provide cart id.")
         userid = self.request.user.id
-        if pk is None:
-            raise NotAcceptable(detail="No data provided.")
-        pk_data = Cart.objects.get(id =pk)
-        user_data = SkartUser.objects.get(user_id = userid)
-        skartuserid = user_data.id 
-        cart_data = Cart.objects.get(user_id = skartuserid)
-        if pk_data != cart_data:
+        customer_data = Customer.objects.get(user_id = userid)
+        card_data = Cart.objects.get(customer_id = customer_data.id)
+        if pk != card_data.id:
             raise NotAcceptable(detail="You are not authorized for this action.")
-        existing_products = cart_data.products.all()
-        existing_products_set = set(existing_products.values_list('pk', flat = True))
-        existing_books = cart_data.books.all()
-        existing_books_set = set(existing_books.values_list('pk', flat = True))
-        request_products = request.data.get('products')
-        request_books = request.data.get('books')
-        if request_products is None:
-            if existing_products_set is not None:
-                request.data.update({'products':list(existing_products_set)})
-        if existing_products_set is not None:
-            whole_data_set = set(request.data['products']).union(existing_products_set)
-            request.data['products'] = list(whole_data_set)
-
-        if request_books is None:
-            if existing_books_set is not None:
-                request.data.update({'books':list(existing_books_set)})
-        if existing_books_set is not None:
-            whole_data_set = set(request.data['books']).union(existing_books_set)
-            request.data['books'] = list(whole_data_set)
-
+        if request.data['products'] is None:
+            raise NotAcceptable(detail="No product to add in the cart.")
+        if request.data['products']['product'] is None:
+            raise NotAcceptable(detail="No product to add in the cart.")
+        if request.data['products']['quantity'] is None:
+            request.data['products']['quantity'] = 1
+        requested_productid = request.data['products']['product']
+        requested_quantity = request.data['products']['quantity']
+        if int(requested_quantity) < 1:
+            raise NotAcceptable(detail="Please add at least one quantity.")
+        requested_product = Product.objects.get(id = requested_productid)
+        cart_products_list = card_data.products.all()
+        cart_products_idlist = list(cart_products_list.values_list('pk', flat = True))
+        if len(cart_products_idlist) != 0:
+            for productthrough in cart_products_list:
+                    if productthrough.product_id == int(requested_productid):
+                        if max(int(requested_quantity), int(productthrough.quantity)) > productthrough.product.stock:
+                            raise NotAcceptable(detail= "We don't have enough stock.")
+                        added_product = ProductOrder.objects.get(product_id = requested_productid)
+                        ProductOrder.objects.filter(product_id = int(requested_productid)).update(quantity = int(requested_quantity))
+                        request.data['products'] = cart_products_idlist 
+                        break
+            else:
+                if int(requested_quantity) > int(requested_product.stock):
+                    raise NotAcceptable(detail= "We don't have enough stock.")
+                productthrough_serializer = ProductOrderSerializer(data=request.data['products'])
+                productthrough_serializer.is_valid(raise_exception=True)
+                added_product = ProductOrder.objects.create(product = requested_product, quantity = int(requested_quantity))
+                Response(added_product.quantity)
+                updated_products_set = set(cart_products_idlist).union({added_product.id})
+                request.data['products'] = list(updated_products_set)
+                 
+                    
+        else:
+            if int(request.data['products']['quantity']) > int(requested_product.stock):
+                raise NotAcceptable(detail= "We don't have enough stock.")
+            productthrough_serializer = ProductOrderSerializer(data=request.data['products'])
+            productthrough_serializer.is_valid(raise_exception=True)
+            added_product = ProductOrder.objects.create(product = requested_product, quantity = request.data['products']['quantity'])
+            request.data['products'] = [added_product.id]
         return super().update(request, *args, **kwargs)
-    
-    def retrieve(self, request, *args, **kwargs):
-        pk = kwargs.get('pk')
-        userid = self.request.user.id
-        if pk is None:
-            raise NotAcceptable(detail="No data provided.")
-        pk_data = Cart.objects.get(id =pk)
-        user_data = SkartUser.objects.get(user_id = userid)
-        skartuserid = user_data.id 
-        cart_data = Cart.objects.get(user_id = skartuserid)
-        if pk_data != cart_data:
-            raise NotAcceptable(detail="You are not authorized for this action.")
-        return super().retrieve(request, *args, **kwargs)
     
     def get_queryset(self):
         return Cart.objects.all()
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
 
-class RemoveItemsCartView(generics.UpdateAPIView):
-    #Removes the given products and books
+class CartRemoveView(generics.UpdateAPIView):
+    '''
+    This view takes request as
+    {
+        'products':{
+            'product':    ,
+            'quantity':   ,
+        }
+    }
+    And updates the given product in customer's cart and decreases the quantity of product. If requested quantity exceeds or becomes equal to the quantity in cart, it removes that product from the cart.
+    '''
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
-        userid = self.request.user.id
         pk = kwargs.get('pk')
-        if pk is None:
-            raise NotAcceptable(detail="Cart Id not provided.")
-        pk_cart_data = Cart.objects.get(id = pk)
-        skart_user_data = SkartUser.objects.get(user_id = userid)
-        user_cart_data = Cart.objects.get(user_id = skart_user_data.id)
-        if pk_cart_data != user_cart_data:
+        if kwargs['pk'] is None:
+            raise NotAcceptable(detail="Please provide cart id.")
+        userid = self.request.user.id
+        customer_data = Customer.objects.get(user_id = userid)
+        cart_data = Cart.objects.get(customer_id = customer_data.id)
+        if pk != cart_data.id:
             raise NotAcceptable(detail="You are not authorized for this action.")
-        existing_products = user_cart_data.products.all()
-        existing_products_set = set(existing_products.values_list('pk', flat = True))
-        requested_products = request.data.get('products')
-        if requested_products is not None:
-            if existing_products_set is None:
-                request.data['products'] = None
+        if request.data['products'] is None:
+            raise NotAcceptable(detail="No product to remove from the cart.")
+        if request.data['products']['product'] is None:
+            raise NotAcceptable(detail="No product to remove the cart.")
+        requested_productid = request.data['products']['product']
+        requested_quantity = request.data['products']['quantity']
+        cart_products_list = cart_data.products.all()
+        cart_products_idlist = list(cart_products_list.values_list('pk', flat = True))
+        if len(cart_products_idlist) != 0:
+            for productthrough in cart_products_list:
+                if productthrough.product_id == int(requested_productid):
+                    to_remove_product = cart_data.products.get(product_id = int(requested_productid))
+                    if to_remove_product.quantity > int(requested_quantity):
+                        cart_data.products.filter(product_id = int(requested_productid)).update(quantity =to_remove_product.quantity - int(requested_quantity))
+                        request.data['products'] = cart_products_idlist
+                    else:
+                        request.data['products'] = list(set(cart_products_idlist).difference({to_remove_product.id}))
+                        to_remove_product.delete() 
+                    break
             else:
-                requested_products_set = set(requested_products)
-                after_removing_products = existing_products_set.difference(requested_products_set)
-                request.data['products'] = list(after_removing_products)
+                raise NotAcceptable(detail="You don't have this item in your cart.")
+                 
+                    
         else:
-            if existing_products_set is not None:
-                request.data.update({'products': list(existing_products_set)})
-            else:
-                pass
-        existing_books = user_cart_data.books.all()
-        existing_books_set = set(existing_books.values_list('pk', flat = True))
-        requested_books = request.data.get('books')
-        if requested_books is not None:
-            if existing_books_set is None:
-                request.data['books'] = None
-            else:
-                requested_books_set = set(requested_books)
-                after_removing_books = existing_books_set.difference(requested_books_set)
-                request.data['books'] = list(after_removing_books)
-        else:
-            if existing_books_set is not None:
-                request.data.update({'books': list(existing_books_set)})
-            else:
-                pass
-        
+            raise NotAcceptable(detail= "You don't have any itme in your cart.")
         return super().update(request, *args, **kwargs)
-
+    
     def get_queryset(self):
         return Cart.objects.all()
     serializer_class = CartSerializer
@@ -214,164 +323,205 @@ class RemoveItemsCartView(generics.UpdateAPIView):
 
 
 
-class PlaceOrderView(generics.CreateAPIView):
+class PlaceOrderView(generics.ListCreateAPIView):
+    '''
+    This view places order of each item present in the cart and vacates the cart as well. The request data format is:
+    {
+    "receiver_name": "",
+    "receiver_mobile_number": "",
+    "place": "",
+    "district": "",
+    "state":"",
+    "country": ""
+    }
+    '''
     def create(self, request, *args, **kwargs):
         userid = self.request.user.id
-        skart_user = SkartUser.objects.get(user_id = userid)
-        cart_data = Cart.objects.get(user_id = skart_user.id)
+        customer = Customer.objects.get(user_id = userid)
+        cart_data = Cart.objects.get(customer_id =  customer.id)
         cart_products = cart_data.products.all()
-        cart_books = cart_data.books.all()
-        if (len(list(cart_products.values_list('pk', flat = True))) == 0) and (len(list(cart_books.values_list('pk', flat = True))) == 0):
+        if len(list(cart_products.values_list('pk', flat = True))) == 0:
             return Response("Please add at least one item in cart.", status=status.HTTP_406_NOT_ACCEPTABLE)
-        request.data['customer'] = skart_user.id
+        if request.data is None:
+            raise NotAcceptable(detail="No data provided.")
+        if request.data.get('receiver_name') is None:
+            raise NotAcceptable(detail='Receiver name not provided.')
+        if request.data.get('receiver_mobile_number') is None:
+            raise NotAcceptable(detail="Receiver's mobile number not provided.")
+        if request.data.get('place') is None:
+            raise NotAcceptable(detail='Place not provided.')
+        if request.data.get('district') is None:
+            raise NotAcceptable(detail='District name not provided.')
+        if request.data.get('state') is None:
+            raise NotAcceptable(detail='State name not provided.')
+        if request.data.get('country') is None:
+            raise NotAcceptable(detail='Country name not provided.')
+        for product in list(cart_products):
+            if product.quantity > product.product.stock:
+                raise NotAcceptable(detail= f"This product {product.product.name} is currently out of stock.")
+            else:
+                ProductOrder.objects.filter(id = product.id).update(order_price = product.product.price*product.quantity)
+                Product.objects.filter(id = product.product.id).update(stock = product.product.stock - product.quantity)
+        request.data['customer'] = customer.id
         request.data['products'] = list(cart_products.values_list('pk', flat = True))
-        request.data['books'] = list(cart_books.values_list('pk', flat = True))
         none_list =[]
-        request.data['total_price'] = cart_data.total_price
-
         cart_data.products.set(none_list)
-        cart_data.books.set(none_list)
-        Cart.objects.filter(user_id = skart_user.id).update(total_price = 0)
         
         
         return super().create(request, *args, **kwargs)
-    queryset = PlaceOrder.objects.all()
+    def get_queryset(self):
+        customer = Customer.objects.get(user_id = self.request.user.id)
+        return PlaceOrder.objects.filter(customer_id = customer.id)
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
 
+
+
     
 class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
+
     def update(self, request, *args, **kwargs):
+        '''
+        This update functions cancels orders of products one by one and list them in cancelled order. The input given as request is:
+        {
+            "products" : 'int'
+        }
+        If there remains no product in order after cancelletion, it deletes the order.
+        '''
         kwargs['partial'] = True
         userid = self.request.user.id
-        skartuser = SkartUser.objects.get(user_id = userid)
+        customer = Customer.objects.get(user_id = userid)
         pk = kwargs.get('pk')
-        orderdatalist = list(PlaceOrder.objects.filter(customer_id = skartuser.id))
-        try:
-            for order in orderdatalist:
-                pk == order.id
-        except:
-            raise NotAcceptable(detail="You are not authorized for this action.")
-        
+        orderdatalist = list(PlaceOrder.objects.filter(customer_id = customer.id))
         orderdata = PlaceOrder.objects.get(id = pk)
+        if orderdata not in orderdatalist:
+            raise NotAcceptable(detail="You are not authorized for this action.")
+        if request.data.get('products') is None:
+            raise NotAcceptable(detail= "Please tell us which item to cancel.")
         ordered_products = orderdata.products.all()
         ordered_products_set = set(ordered_products.values_list('pk', flat=True))
-
-        ordered_books = orderdata.books.all()
-        ordered_books_set = set(ordered_books.values_list('pk', flat=True))
-
-        
-        if request.data.get('products') is not None:
-            common_products_list = list(ordered_products_set.intersection(set(request.data.get('products'))))
-        else:
-            common_products_list =  []  
-        if request.data.get('books') is not None:
-            common_books_list = list(ordered_books_set.intersection(set(request.data.get('books'))))
-        else:
-            common_books_list = []   
-        if (len(common_books_list) != 0) or (len(common_products_list) != 0):
-            cancelled_order = CancelledOrder.objects.create(customer = skartuser)
-            if common_products_list is not None:
-                cancelled_order.products.set(common_products_list)
-            if common_books_list is not None:
-                cancelled_order.books.set(common_books_list)
-        
-        request.data['customer']= skartuser.id
-        cancelling_products = request.data.get('products')
-        if cancelling_products is not None:
-            if ordered_products is None:
-                request.data['products'] = []
-            else:
-                remaining_products_set = ordered_products_set.difference(set(cancelling_products))
-                request.data['products'] = remaining_products_set
-        else:
-            if ordered_products is not None:
-                request.data.update({'products': list(ordered_products_set)})
-            else:
-                request.data['products'] = []
-
-        cancelling_books = request.data.get('books')
-        if cancelling_books is not None:
-            if ordered_books is None:
-                request.data['books'] = []
-            else:
-                remaining_books_set = ordered_books_set.difference(set(cancelling_books))
-                request.data['books'] = remaining_books_set
-        else:
-            if ordered_books is not None:
-                request.data.update({'books': list(ordered_books_set)})
-            else:
-                request.data['books'] = []
-        if (len(request.data.get('products')) == 0) and (len(request.data.get('books')) == 0):
-            PlaceOrder.objects.filter(id=pk).delete()
-            return Response("Your order has been cancelled", status= status.HTTP_200_OK)
-        if len(request.data.get('products')) != 0:
-            remaining_productsid_list = list(request.data['products'])
-            products_price = 0
-            for productid in remaining_productsid_list:
-                product = Product.objects.get(id = productid)
-                products_price = products_price + product.price
-        if len(request.data.get('books')) != 0:
-            remaining_booksid_list = list(request.data['books'])
-            books_price = 0
-            for bookid in remaining_booksid_list:
-                book = Book.objects.get(id = bookid)
-                books_price = books_price + book.price
-        newtotalprice = products_price+books_price
-        request.data.update({'total_price':newtotalprice})
+        productid_to_be_cancelled = int(request.data.get('products'))
+        if productid_to_be_cancelled not in ordered_products_set:
+            raise NotAcceptable(detail="You have not ordered this product yet.")
+        cancelled_order_data ={
+            "customer": customer.id,
+            "products": [productid_to_be_cancelled]
+        }
+        cancelled_order_serializer = CancelledOrderSerializer(data=cancelled_order_data)
+        cancelled_order_serializer.is_valid(raise_exception=True)
+        cancelled_order_serializer.save()
+        request.data['customer']= customer.id
+        remaining_products_set = ordered_products_set.difference({productid_to_be_cancelled})
+        cancelled_product_order = ProductOrder.objects.get(id = productid_to_be_cancelled)
+        Product.objects.filter(id = cancelled_product_order.product.id).update(stock = cancelled_product_order.product.stock+cancelled_product_order.quantity)
+        if len(remaining_products_set) == 0:
+            orderdata.delete()
+            return Response("Your order has been cancelled.", status= status.HTTP_202_ACCEPTED)
+        request.data.update({"products": list(remaining_products_set)})
         return super().update(request, *args, **kwargs)
-    
+
 
     def retrieve(self, request, *args, **kwargs):
+        '''
+        This function retrieves the requested order.
+        '''
         userid = self.request.user.id
-        skartuser = SkartUser.objects.get(user_id = userid)
+        customer = Customer.objects.get(user_id = userid)
         pk = kwargs.get('pk')
         orderdata = PlaceOrder.objects.get(id = pk)
         userid = orderdata.customer_id
-        if userid != skartuser.id:
+        if userid != customer.id:
             raise NotAcceptable(detail="You are not authorized for this action.")
         return super().retrieve(request, *args, **kwargs)
     queryset = PlaceOrder.objects.all()
-    serializer_class = OrderedSerializer
+    serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
-class CancellOrderView(generics.CreateAPIView):
+class CancellOrderView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
-        
-        if request.data['orderid'] is None:
+        '''
+        This function cancels the whole order and lists it in cancelled orders.
+        The request sent to it is:
+        {
+            "orderid": "int"
+        }
+        '''
+        if request.data.get('orderid') is None:
             raise NotAcceptable(detail="Orderid is required.")
-        order_id = request.data['orderid']
+        order_id = int(request.data['orderid'])
         order_details = PlaceOrder.objects.get(id = order_id)
         custumorid = order_details.customer_id
         
-        skartuser = SkartUser.objects.get(user_id = self.request.user.id)
+        customer = Customer.objects.get(user_id = self.request.user.id)
         
-        if custumorid != skartuser.id:
+        if custumorid != customer.id:
             raise NotAcceptable(detail= "You are not authorized to perform this action.")
-        ordered_products = order_details.products.all()
-        ordered_books = order_details.books.all()
-        
+        ordered_products = order_details.products.all()        
         request.data['products'] = list(ordered_products.values_list('pk', flat= True))
-        request.data['books'] = list(ordered_books.values_list('pk', flat= True))
-        request.data['customer']= skartuser.id
+        request.data['customer']= customer.id
+        for ordered_product in list(order_details.products.all()):
+            Product.objects.filter(id = ordered_product.product.id).update(stock = ordered_product.product.stock + ordered_product.quantity)
         PlaceOrder.objects.filter(id = order_id).delete()
         return super().create(request, *args, **kwargs)
-    queryset = CancelledOrder.objects.all()
+    def get_queryset(self):
+        customer = Customer.objects.get(user_id = self.request.user.id)
+        return CancelledOrder.objects.filter(customer_id = customer.id)
     serializer_class = CancelledOrderSerializer
     permission_classes = [IsAuthenticated]
 
 
 class RetrieveCancelledOrderView(generics.RetrieveAPIView):
+    '''
+    This retrieves the requested cancelled order.
+    '''
     def retrieve(self, request, *args, **kwargs):
         pk = kwargs.get('pk')
         cancelled_orders_list = CancelledOrder.objects.get(id = pk)
         customerid = cancelled_orders_list.customer_id
-        skartuser = SkartUser.objects.get(user_id = self.request.user.id)
-        if customerid != skartuser.id:
+        customer = Customer.objects.get(user_id = self.request.user.id)
+        if customerid != customer.id:
             raise NotAcceptable(detail= "You are not authorized for this action.")
-        
         return super().retrieve(request, *args, **kwargs)
     queryset = CancelledOrder.objects.all()
     serializer_class = CancelledOrderSerializer
     permission_classes= [IsAuthenticated]
+
+
+
+'''
+Now the upcoming views will deal with the listing and retrieving products by seller and retrieving of orders of their products.
+'''
+
+class ListCreateProductView(generics.ListCreateAPIView):
+    '''
+    Seller can get products list created by him and create new products too.
+    '''
+    def create(self, request, *args, **kwargs):
+        userid = self.request.user.id
+        seller = Seller.objects.get(seller_id = userid)
+        request.data.update({'seller': seller.id})
+        return super().create(request, *args, **kwargs)
+    def get_queryset(self):
+        userid = self.request.user.id
+        seller = Seller.objects.get(seller_id = userid)
+        return Product.objects.filter(seller = seller).select_related('seller')
+    serializer_class = ProducSerializer
+    permission_classes = [IsAdminUser]
+
+class RetrieveUpdateDestroyProductsView(generics.RetrieveUpdateDestroyAPIView):
+    '''
+    Seller can retrieve, update and destroy the products added by hm.
+    '''
+    def update(self, request, *args, **kwargs):
+        kwargs['partial'] = True
+        return super().update(request, *args, **kwargs)
+
+    def get_queryset(self):
+        userid = self.request.user.id
+        seller = Seller.objects.get(seller_id = userid)
+        return Product.objects.filter(seller = seller).select_related('seller')
+    serializer_class = ProducSerializer
+    permission_classes = [IsAdminUser]
+
+
