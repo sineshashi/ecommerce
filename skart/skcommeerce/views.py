@@ -16,7 +16,7 @@ from .models import  (
 )
 from rest_framework.response import Response
 from rest_framework.exceptions import NotAcceptable, ValidationError
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, IsAdminUser
+from .mypermissionclasses import IsSeller, IsCustomer
 
 
 
@@ -109,7 +109,7 @@ class CustomerProfile(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return Customer.objects.all().select_related('user')
     serializer_class = UpdateCustomerSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
 
 class CreateSellerView(generics.CreateAPIView):
@@ -177,7 +177,7 @@ class SellerProfile(generics.RetrieveDestroyAPIView):
     def get_queryset(self):
         return Seller.objects.all().select_related('seller')
     serializer_class = RetrieveSellerSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSeller]
 
 class UpdateSellerProfile(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
@@ -194,7 +194,7 @@ class UpdateSellerProfile(generics.UpdateAPIView):
     def get_queryset(self):
         return Seller.objects.all().select_related('seller')
     serializer_class = UpdateSellerSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSeller]
 
 
 
@@ -266,7 +266,7 @@ class CartUpdateView(generics.RetrieveUpdateAPIView):
     def get_queryset(self):
         return Cart.objects.all()
     serializer_class = CartSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
 class CartRemoveView(generics.UpdateAPIView):
     '''
@@ -319,7 +319,7 @@ class CartRemoveView(generics.UpdateAPIView):
     def get_queryset(self):
         return Cart.objects.all()
     serializer_class = CartSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
 
 
@@ -373,7 +373,7 @@ class PlaceOrderView(generics.ListCreateAPIView):
         customer = Customer.objects.get(user_id = self.request.user.id)
         return PlaceOrder.objects.filter(customer_id = customer.id)
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
 
 
@@ -436,7 +436,7 @@ class ItemsCancelOrderView(generics.RetrieveUpdateAPIView):
         return super().retrieve(request, *args, **kwargs)
     queryset = PlaceOrder.objects.all()
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
 class CancellOrderView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
@@ -468,7 +468,7 @@ class CancellOrderView(generics.ListCreateAPIView):
         customer = Customer.objects.get(user_id = self.request.user.id)
         return CancelledOrder.objects.filter(customer_id = customer.id)
     serializer_class = CancelledOrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsCustomer]
 
 
 class RetrieveCancelledOrderView(generics.RetrieveAPIView):
@@ -485,7 +485,7 @@ class RetrieveCancelledOrderView(generics.RetrieveAPIView):
         return super().retrieve(request, *args, **kwargs)
     queryset = CancelledOrder.objects.all()
     serializer_class = CancelledOrderSerializer
-    permission_classes= [IsAuthenticated]
+    permission_classes= [IsCustomer]
 
 
 
@@ -507,11 +507,11 @@ class ListCreateProductView(generics.ListCreateAPIView):
         seller = Seller.objects.get(seller_id = userid)
         return Product.objects.filter(seller = seller).select_related('seller')
     serializer_class = ProducSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSeller]
 
 class RetrieveUpdateDestroyProductsView(generics.RetrieveUpdateDestroyAPIView):
     '''
-    Seller can retrieve, update and destroy the products added by hm.
+    Seller can retrieve, update and destroy the products added by him.
     '''
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
@@ -522,6 +522,6 @@ class RetrieveUpdateDestroyProductsView(generics.RetrieveUpdateDestroyAPIView):
         seller = Seller.objects.get(seller_id = userid)
         return Product.objects.filter(seller = seller).select_related('seller')
     serializer_class = ProducSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsSeller]
 
 
